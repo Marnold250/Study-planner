@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.activity.ComponentActivity
@@ -49,6 +50,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -62,6 +67,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Switch
 import com.example.data.CalendarSyncHelper
 import androidx.compose.material.icons.filled.Add
@@ -75,6 +81,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -148,7 +156,28 @@ import com.example.ui.CreatorInfoDialog
 import com.example.ui.RealtimeNotificationHelper
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material3.RadioButton
+import android.net.Uri
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.border
 import java.util.Calendar
 
 class MainActivity : ComponentActivity() {
@@ -274,6 +303,10 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.restoreTimerState(context)
+    }
+
     if (!hasCompletedOnboarding) {
         OnboardingScreen(
             onFinished = {
@@ -293,236 +326,434 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
             }
         )
     } else {
-        Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val isWideScreen = maxWidth > 720.dp
+
+            Row(modifier = Modifier.fillMaxSize()) {
+                if (isWideScreen) {
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        header = {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(vertical = 24.dp, horizontal = 12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.School,
+                                    contentDescription = "App Icon",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Reminder",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                if (currentTab == 0 || currentTab == 1) {
+                                    FloatingActionButton(
+                                        onClick = { showAddDialog = true },
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                                        modifier = Modifier.testTag("rail_fab_add_task")
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "Add Task")
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.testTag("side_nav_rail")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.School,
-                            contentDescription = "App Icon",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        NavigationRailItem(
+                            selected = currentTab == 0,
+                            onClick = { currentTab = 0 },
+                            icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
+                            label = { Text("Study Hub") },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_rail_dashboard")
                         )
-                        Column(horizontalAlignment = Alignment.Start) {
-                            Text(
-                                text = "My Study Hub",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
+                        NavigationRailItem(
+                            selected = currentTab == 1,
+                            onClick = { currentTab = 1 },
+                            icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "Tasks") },
+                            label = { Text("My Tasks") },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_rail_tasks")
+                        )
+                        NavigationRailItem(
+                            selected = currentTab == 2,
+                            onClick = { currentTab = 2 },
+                            icon = { Icon(Icons.Default.Analytics, contentDescription = "Analytics") },
+                            label = { Text("Analytics") },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_rail_analytics")
+                        )
+                        NavigationRailItem(
+                            selected = currentTab == 3,
+                            onClick = { currentTab = 3 },
+                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar Sync") },
+                            label = { Text("Calendar") },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_rail_calendar")
+                        )
+                        NavigationRailItem(
+                            selected = currentTab == 4,
+                            onClick = { currentTab = 4 },
+                            icon = { Icon(Icons.Default.Timer, contentDescription = "Focus Timer") },
+                            label = { Text("Focus") },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("nav_rail_focus")
+                        )
+                    }
+                }
+
+                Scaffold(
+                    modifier = Modifier.weight(1f),
+                    topBar = {
+                        val appBarTitle = when (currentTab) {
+                            0 -> "Student Task Reminder"
+                            1 -> "My Assignments"
+                            2 -> "Study Analytics"
+                            3 -> "Calendar Sync"
+                            4 -> "Focus Pomodoro"
+                            5 -> "App Settings"
+                            else -> "Student Task Reminder"
+                        }
+                        
+                        CenterAlignedTopAppBar(
+                            title = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (!isWideScreen && currentTab != 0) {
+                                        Icon(
+                                            imageVector = when (currentTab) {
+                                                1 -> Icons.Default.FormatListBulleted
+                                                2 -> Icons.Default.Analytics
+                                                3 -> Icons.Default.CalendarMonth
+                                                4 -> Icons.Default.Timer
+                                                5 -> Icons.Default.Settings
+                                                else -> Icons.Default.School
+                                            },
+                                            contentDescription = "Screen Icon",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = appBarTitle,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            },
+                            navigationIcon = {
+                                if (currentTab == 5) {
+                                    IconButton(onClick = { currentTab = 4 }) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowBack,
+                                            contentDescription = "Back"
+                                        )
+                                    }
+                                }
+                            },
+                            actions = {
+                                if (currentTab == 4) {
+                                    IconButton(
+                                        onClick = { currentTab = 5 },
+                                        modifier = Modifier.testTag("settings_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = "Settings",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface
                             )
-                            Text(
-                                text = "Logged in as: $loggedInUsername",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    bottomBar = {
+                        if (!isWideScreen) {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 8.dp,
+                                modifier = Modifier.testTag("bottom_nav_bar")
+                            ) {
+                                NavigationBarItem(
+                                    selected = currentTab == 0,
+                                    onClick = { currentTab = 0 },
+                                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
+                                    label = { Text("Study Hub") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("nav_dashboard")
+                                )
+                                NavigationBarItem(
+                                    selected = currentTab == 1,
+                                    onClick = { currentTab = 1 },
+                                    icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "Tasks") },
+                                    label = { Text("My Tasks") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("nav_tasks")
+                                )
+                                NavigationBarItem(
+                                    selected = currentTab == 2,
+                                    onClick = { currentTab = 2 },
+                                    icon = { Icon(Icons.Default.Analytics, contentDescription = "Analytics") },
+                                    label = { Text("Analytics") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("nav_analytics")
+                                )
+                                NavigationBarItem(
+                                    selected = currentTab == 3,
+                                    onClick = { currentTab = 3 },
+                                    icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar Sync") },
+                                    label = { Text("Calendar") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("nav_calendar")
+                                )
+                                NavigationBarItem(
+                                    selected = currentTab == 4,
+                                    onClick = { currentTab = 4 },
+                                    icon = { Icon(Icons.Default.Timer, contentDescription = "Focus Timer") },
+                                    label = { Text("Focus") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("nav_focus")
+                                )
+                            }
+                        }
+                    },
+                    floatingActionButton = {
+                        if (!isWideScreen && (currentTab == 0 || currentTab == 1)) {
+                            FloatingActionButton(
+                                onClick = { showAddDialog = true },
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = MaterialTheme.colorScheme.onSecondary,
+                                modifier = Modifier
+                                    .testTag("fab_add_task")
+                                    .padding(bottom = 8.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Task")
+                            }
+                        }
+                    }
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                            .background(MaterialTheme.colorScheme.background)
+                    ) {
+                        when (currentTab) {
+                            0 -> DashboardScreen(
+                                viewModel = viewModel,
+                                onTaskEdit = { task -> editingTask = task },
+                                onTabChange = { currentTab = it },
+                                hasNotificationPermission = hasNotificationPermission,
+                                onRequestNotificationPermission = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }
+                            )
+                            1 -> TasksListScreen(
+                                viewModel = viewModel,
+                                onTaskEdit = { task -> editingTask = task }
+                            )
+                            2 -> AnalyticsScreen(viewModel = viewModel)
+                            3 -> CalendarSyncScreen(
+                                viewModel = viewModel,
+                                hasCalendarPermission = hasCalendarPermission,
+                                onRequestCalendarPermission = {
+                                    calendarPermissionLauncher.launch(
+                                        arrayOf(
+                                            android.Manifest.permission.READ_CALENDAR,
+                                            android.Manifest.permission.WRITE_CALENDAR
+                                        )
+                                    )
+                                },
+                                onTaskEdit = { task -> editingTask = task }
+                            )
+                            4 -> PomodoroTimerScreen(viewModel = viewModel)
+                            5 -> SettingsScreen(
+                                viewModel = viewModel,
+                                loggedInUsername = loggedInUsername,
+                                onLogout = {
+                                    val userToLogout = loggedInUsername
+                                    sharedPrefs.edit()
+                                        .putBoolean("user_logged_in", false)
+                                        .putString("logged_in_username", "guest")
+                                        .apply()
+                                    isLoggedIn = false
+                                    viewModel.setCurrentUser("guest")
+                                    currentTab = 0
+                                    RealtimeNotificationHelper.showNotification(
+                                        context = context,
+                                        title = "Logged Out",
+                                        message = "Goodbye, $userToLogout! You have been successfully logged out."
+                                    )
+                                }
+                            )
+                        }
+
+                        // Dialog for Add Task
+                        if (showAddDialog) {
+                            TaskFormDialog(
+                                onDismiss = { showAddDialog = false },
+                                onSave = { title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound ->
+                                    viewModel.addTask(title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound, context)
+                                    showAddDialog = false
+                                }
+                            )
+                        }
+
+                        // Dialog for Edit Task
+                        editingTask?.let { task ->
+                            TaskFormDialog(
+                                task = task,
+                                onDismiss = { editingTask = null },
+                                onSave = { title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound ->
+                                    viewModel.updateTask(
+                                        task.copy(
+                                            title = title,
+                                            description = desc,
+                                            subject = subject,
+                                            dueDate = dueDate,
+                                            priority = priority,
+                                            estimatedMinutes = mins,
+                                            reminderTime = reminder,
+                                            reminderOffsetMinutes = offsetMins,
+                                            reminderRepeat = repeat,
+                                            reminderSound = sound
+                                        ),
+                                        context
+                                    )
+                                    editingTask = null
+                                }
+                            )
+                        }
+
+                        // Dialog for Active Task Alarm Pop-up in the Center of the Screen
+                        val activeAlarmId = com.example.receiver.AlarmSoundManager.activeAlarmTaskId.value
+                        val activeAlarmTitle = com.example.receiver.AlarmSoundManager.activeAlarmTaskTitle.value
+                        if (activeAlarmId != null) {
+                            AlertDialog(
+                                onDismissRequest = { /* Force explicit dismiss click */ },
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.Default.NotificationsActive,
+                                        contentDescription = "Alarm Active",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                },
+                                title = {
+                                    Text(
+                                        text = "⏰ Task Alarm Triggered!",
+                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                },
+                                text = {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = activeAlarmTitle ?: "Study Task Time!",
+                                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = MaterialTheme.colorScheme.error,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = "Your scheduled study reminder has reached its time. Let's get focused!",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            com.example.receiver.AlarmSoundManager.stopAlarm()
+                                            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                                            notificationManager?.cancel(activeAlarmId)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            contentColor = MaterialTheme.colorScheme.onError
+                                        ),
+                                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                                    ) {
+                                        Text("Dismiss Alarm", fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             )
                         }
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            val userToLogout = loggedInUsername
-                            sharedPrefs.edit()
-                                .putBoolean("user_logged_in", false)
-                                .putString("logged_in_username", "guest")
-                                .apply()
-                            isLoggedIn = false
-                            viewModel.setCurrentUser("guest")
-                            RealtimeNotificationHelper.showNotification(
-                                context = context,
-                                title = "Logged Out",
-                                message = "Goodbye, $userToLogout! You have been successfully logged out."
-                            )
-                        },
-                        modifier = Modifier.testTag("logout_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ExitToApp,
-                            contentDescription = "Log Out",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
-                modifier = Modifier.testTag("bottom_nav_bar")
-            ) {
-                NavigationBarItem(
-                    selected = currentTab == 0,
-                    onClick = { currentTab = 0 },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
-                    label = { Text("Study Hub") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_dashboard")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 1,
-                    onClick = { currentTab = 1 },
-                    icon = { Icon(Icons.Default.FormatListBulleted, contentDescription = "Tasks") },
-                    label = { Text("My Tasks") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_tasks")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 2,
-                    onClick = { currentTab = 2 },
-                    icon = { Icon(Icons.Default.Analytics, contentDescription = "Analytics") },
-                    label = { Text("Analytics") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_analytics")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 3,
-                    onClick = { currentTab = 3 },
-                    icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Calendar Sync") },
-                    label = { Text("Calendar") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_calendar")
-                )
-                NavigationBarItem(
-                    selected = currentTab == 4,
-                    onClick = { currentTab = 4 },
-                    icon = { Icon(Icons.Default.Timer, contentDescription = "Focus Timer") },
-                    label = { Text("Focus") },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    modifier = Modifier.testTag("nav_focus")
-                )
-            }
-        },
-        floatingActionButton = {
-            if (currentTab == 0 || currentTab == 1) {
-                FloatingActionButton(
-                    onClick = { showAddDialog = true },
-                    containerColor = MaterialTheme.colorScheme.secondary,
-                    contentColor = MaterialTheme.colorScheme.onSecondary,
-                    modifier = Modifier
-                        .testTag("fab_add_task")
-                        .padding(bottom = 8.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Task")
                 }
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            when (currentTab) {
-                0 -> DashboardScreen(
-                    viewModel = viewModel,
-                    onTaskEdit = { task -> editingTask = task },
-                    onTabChange = { currentTab = it },
-                    hasNotificationPermission = hasNotificationPermission,
-                    onRequestNotificationPermission = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    }
-                )
-                1 -> TasksListScreen(
-                    viewModel = viewModel,
-                    onTaskEdit = { task -> editingTask = task }
-                )
-                2 -> AnalyticsScreen(viewModel = viewModel)
-                3 -> CalendarSyncScreen(
-                    viewModel = viewModel,
-                    hasCalendarPermission = hasCalendarPermission,
-                    onRequestCalendarPermission = {
-                        calendarPermissionLauncher.launch(
-                            arrayOf(
-                                android.Manifest.permission.READ_CALENDAR,
-                                android.Manifest.permission.WRITE_CALENDAR
-                            )
-                        )
-                    }
-                )
-                4 -> PomodoroTimerScreen(viewModel = viewModel)
-            }
-
-            // Dialog for Add Task
-            if (showAddDialog) {
-                TaskFormDialog(
-                    onDismiss = { showAddDialog = false },
-                    onSave = { title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound ->
-                        viewModel.addTask(title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound, context)
-                        showAddDialog = false
-                    }
-                )
-            }
-
-            // Dialog for Edit Task
-            editingTask?.let { task ->
-                TaskFormDialog(
-                    task = task,
-                    onDismiss = { editingTask = null },
-                    onSave = { title, desc, subject, dueDate, priority, mins, reminder, offsetMins, repeat, sound ->
-                        viewModel.updateTask(
-                            task.copy(
-                                title = title,
-                                description = desc,
-                                subject = subject,
-                                dueDate = dueDate,
-                                priority = priority,
-                                estimatedMinutes = mins,
-                                reminderTime = reminder,
-                                reminderOffsetMinutes = offsetMins,
-                                reminderRepeat = repeat,
-                                reminderSound = sound
-                            ),
-                            context
-                        )
-                        editingTask = null
-                    }
-                )
-            }
-        }
     }
-}
 }
 
 // ==========================================
@@ -547,13 +778,50 @@ fun DashboardScreen(
         filteredTasks.filter { !it.isCompleted && it.priority == 2 }.take(3)
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("dashboard_screen"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    val slides = remember {
+        listOf(
+            Triple(
+                R.drawable.img_hero_banner,
+                "KNOWLEDGE IS POWER",
+                "Your focus determines your reality. Let's make progress today!"
+            ),
+            Triple(
+                R.drawable.img_onboarding_focus_1783067327516,
+                "STAY FOCUSED",
+                "Block distractions and lock into your Pomodoro study flow."
+            ),
+            Triple(
+                R.drawable.img_onboarding_organize_1783067310393,
+                "ORGANIZE WORK",
+                "Prioritize assignments, set deadlines, and achieve more."
+            ),
+            Triple(
+                R.drawable.img_onboarding_sync_1783067343559,
+                "CALENDAR SYNC",
+                "Seamlessly sync your study reminders with your Google Calendar."
+            )
+        )
+    }
+    var currentSlideIndex by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(4000)
+            currentSlideIndex = (currentSlideIndex + 1) % slides.size
+        }
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 850.dp)
+                .testTag("dashboard_screen"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // Welcome Header
         item {
             Row(
@@ -561,9 +829,9 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Study Planner",
+                        text = "Student Task Reminder",
                         style = MaterialTheme.typography.displaySmall.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-1).sp
@@ -574,20 +842,6 @@ fun DashboardScreen(
                         text = "Track assignments, prepare, achieve.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.School,
-                        contentDescription = "Academic Icon",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -652,60 +906,70 @@ fun DashboardScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp),
+                    .height(180.dp)
+                    .clickable { currentSlideIndex = (currentSlideIndex + 1) % slides.size },
                 shape = RoundedCornerShape(24.dp),
                 elevation = CardDefaults.cardElevation(4.dp)
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Hero Image Background
-                    Image(
-                        painter = painterResource(id = R.drawable.img_hero_banner),
-                        contentDescription = "Motivational student desk study scene",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Overlay Dark Gradient for clear text overlay contrast
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.85f)
-                                    ),
-                                    startY = 50f
-                                )
+                    androidx.compose.animation.Crossfade(
+                        targetState = currentSlideIndex,
+                        animationSpec = androidx.compose.animation.core.tween(1000),
+                        label = "Banner Crossfade"
+                    ) { index ->
+                        val slide = slides[index]
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            // Hero Image Background
+                            Image(
+                                painter = painterResource(id = slide.first),
+                                contentDescription = "Motivational student desk study scene",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                    )
 
-                    // Text & Callouts
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.Bottom
-                    ) {
-                        Text(
-                            text = "KNOWLEDGE IS POWER",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 2.sp
-                            ),
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Your focus determines your reality. Let's make progress today!",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 20.sp
-                            ),
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            // Overlay Dark Gradient for clear text overlay contrast
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                Color.Black.copy(alpha = 0.85f)
+                                            ),
+                                            startY = 50f
+                                        )
+                                    )
+                            )
+
+                            // Text & Callouts
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(20.dp),
+                                verticalArrangement = Arrangement.Bottom
+                            ) {
+                                Text(
+                                    text = slide.second,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 2.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = slide.third,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 20.sp
+                                    ),
+                                    color = Color.White,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -872,6 +1136,7 @@ fun DashboardScreen(
         }
     }
 }
+}
 
 // ==========================================
 // SCREEN 2: ALL TASKS LIST
@@ -890,11 +1155,16 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
 
     var showFilterMenu by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("tasks_list_screen")
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 850.dp)
+                .testTag("tasks_list_screen")
+        ) {
         // Search & Quick Filter Block
         Column(
             modifier = Modifier
@@ -911,75 +1181,51 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                 )
             )
 
-            // Search textfield
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.searchQuery.value = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("search_tasks_input"),
-                placeholder = { Text("Search title, study guides, notes...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search icon") },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.searchQuery.value = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
-                        }
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            // Status Filter Row (Horizontal Scrolling List)
+            // Search textfield & Sort in a Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatusFilterChip(
-                    label = "All",
-                    selected = statusFilter == StatusFilter.ALL,
-                    onClick = { viewModel.statusFilter.value = StatusFilter.ALL }
-                )
-                StatusFilterChip(
-                    label = "Pending",
-                    selected = statusFilter == StatusFilter.PENDING,
-                    onClick = { viewModel.statusFilter.value = StatusFilter.PENDING }
-                )
-                StatusFilterChip(
-                    label = "Completed",
-                    selected = statusFilter == StatusFilter.COMPLETED,
-                    onClick = { viewModel.statusFilter.value = StatusFilter.COMPLETED }
-                )
-                StatusFilterChip(
-                    label = "Overdue",
-                    selected = statusFilter == StatusFilter.OVERDUE,
-                    onClick = { viewModel.statusFilter.value = StatusFilter.OVERDUE }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.searchQuery.value = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("search_tasks_input"),
+                    placeholder = { Text("Search title, notes...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search icon") },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.searchQuery.value = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    ),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Sort Dropdown button
+                // Sort Dropdown button Box
                 Box {
                     IconButton(
                         onClick = { showFilterMenu = !showFilterMenu },
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer)
                     ) {
                         Icon(
                             Icons.Default.FilterList,
                             contentDescription = "Sort Option Menu",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
 
@@ -1054,6 +1300,43 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                             }
                         )
                     }
+                }
+            }
+
+            // Status Filter TabRow (Responsive ScrollableTabRow)
+            androidx.compose.material3.ScrollableTabRow(
+                selectedTabIndex = when (statusFilter) {
+                    StatusFilter.ALL -> 0
+                    StatusFilter.PENDING -> 1
+                    StatusFilter.COMPLETED -> 2
+                    StatusFilter.OVERDUE -> 3
+                },
+                edgePadding = 0.dp,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth().testTag("tasks_status_tabs")
+            ) {
+                val tabsList = listOf(
+                    StatusFilter.ALL to "All",
+                    StatusFilter.PENDING to "Pending",
+                    StatusFilter.COMPLETED to "Completed",
+                    StatusFilter.OVERDUE to "Overdue"
+                )
+                tabsList.forEachIndexed { index, (filter, label) ->
+                    Tab(
+                        selected = statusFilter == filter,
+                        onClick = { viewModel.statusFilter.value = filter },
+                        text = {
+                            Text(
+                                text = label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (statusFilter == filter) FontWeight.Bold else FontWeight.Medium
+                                )
+                            )
+                        }
+                    )
                 }
             }
 
@@ -1134,6 +1417,7 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
         }
     }
 }
+}
 
 @Composable
 fun DropdownMenuSeparator() {
@@ -1201,6 +1485,79 @@ fun SubjectFilterTag(subject: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 // ==========================================
+// COMPOSABLE: ANIMATED TASK CHECKBOX (HIGH POLISH)
+// ==========================================
+@Composable
+fun AnimatedTaskCheckbox(
+    checked: Boolean,
+    isLoading: Boolean,
+    isHighPriority: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (checked) 1.15f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        )
+    )
+
+    val checkColor = if (isHighPriority) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
+    val uncheckedColor = if (isHighPriority) {
+        MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
+    } else {
+        MaterialTheme.colorScheme.outline
+    }
+
+    val containerColor by animateColorAsState(
+        targetValue = if (checked) checkColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200)
+    )
+
+    Box(
+        modifier = modifier
+            .scale(scale)
+            .size(26.dp)
+            .clip(CircleShape)
+            .border(
+                width = if (checked) 0.dp else 2.dp,
+                color = if (checked) Color.Transparent else uncheckedColor,
+                shape = CircleShape
+            )
+            .background(containerColor)
+            .clickable(enabled = !isLoading, onClick = onToggle),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = if (checked) MaterialTheme.colorScheme.onPrimary else checkColor,
+                strokeWidth = 2.5.dp,
+                modifier = Modifier.size(16.dp)
+            )
+        } else {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = checked,
+                enter = fadeIn() + scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
+                exit = fadeOut() + scaleOut()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Completed",
+                    tint = if (isHighPriority) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+// ==========================================
 // COMPOSABLE: TASK LIST ITEM CARD (HIGH POLISH)
 // ==========================================
 @Composable
@@ -1210,7 +1567,29 @@ fun TaskListItem(
     onDelete: () -> Unit,
     onClick: () -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    var isUpdating by remember(task.id, task.isCompleted) { mutableStateOf(false) }
+
+    val checkCelebrationScale = remember { Animatable(1f) }
+    LaunchedEffect(task.isCompleted) {
+        if (task.isCompleted) {
+            checkCelebrationScale.animateTo(
+                targetValue = 1.05f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+            )
+            checkCelebrationScale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessMedium)
+            )
+        }
+    }
+
     val cardAlpha = if (task.isCompleted) 0.65f else 1f
+    val animatedAlpha by animateFloatAsState(
+        targetValue = cardAlpha,
+        animationSpec = tween(durationMillis = 350)
+    )
+
     val isOverdue = !task.isCompleted && task.dueDate < System.currentTimeMillis()
     val isHighPriorityActive = task.priority == 2 && !task.isCompleted
 
@@ -1234,6 +1613,11 @@ fun TaskListItem(
     } else {
         MaterialTheme.colorScheme.surface
     }
+
+    val cardBgAnimated by animateColorAsState(
+        targetValue = cardBg,
+        animationSpec = tween(durationMillis = 350)
+    )
 
     val cardBorder = if (isHighPriorityActive) {
         BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f))
@@ -1260,10 +1644,12 @@ fun TaskListItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .scale(checkCelebrationScale.value)
+            .graphicsLayer(alpha = animatedAlpha)
             .clickable(onClick = onClick)
             .testTag("task_card_item_${task.id}"),
         colors = CardDefaults.cardColors(
-            containerColor = cardBg
+            containerColor = cardBgAnimated
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (task.isCompleted) 0.dp else 2.dp
@@ -1293,14 +1679,19 @@ fun TaskListItem(
                     .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Interactive Checkbox with standard target height
-                Checkbox(
+                // Interactive Checkbox with standard target height and animations
+                AnimatedTaskCheckbox(
                     checked = task.isCompleted,
-                    onCheckedChange = { onToggleComplete() },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.primary,
-                        uncheckedColor = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline
-                    ),
+                    isLoading = isUpdating,
+                    isHighPriority = isHighPriorityActive,
+                    onToggle = {
+                        coroutineScope.launch {
+                            isUpdating = true
+                            delay(500) // Aesthetic delay simulating database saving progress
+                            onToggleComplete()
+                            isUpdating = false
+                        }
+                    },
                     modifier = Modifier.testTag("task_checkbox_${task.id}")
                 )
 
@@ -1452,13 +1843,18 @@ fun AnalyticsScreen(viewModel: TaskViewModel) {
         if (totalTasks == 0) 0f else (completedCount.toFloat() / totalTasks) * 100f
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("analytics_screen"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 850.dp)
+                .testTag("analytics_screen"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // Stats title banner
         item {
             Column {
@@ -1695,6 +2091,7 @@ fun AnalyticsScreen(viewModel: TaskViewModel) {
         }
     }
 }
+}
 
 @Composable
 fun AnalyticsMiniCard(
@@ -1776,6 +2173,23 @@ fun TaskFormDialog(
     var reminderOffsetMinutes by remember { mutableStateOf(task?.reminderOffsetMinutes ?: 15) }
     var reminderRepeat by remember { mutableStateOf(task?.reminderRepeat ?: false) }
     var reminderSound by remember { mutableStateOf(task?.reminderSound ?: "Default") }
+
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            reminderSound = it.toString()
+            Toast.makeText(context, "Set custom sound: ${getFileName(context, it) ?: "Selected Sound"}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val reminderCalendar = remember {
         Calendar.getInstance().apply {
@@ -2269,6 +2683,52 @@ fun TaskFormDialog(
                                                 )
                                             }
                                         }
+
+                                        // Custom sound picker option
+                                        val isCustomSelected = reminderSound.startsWith("content://") || reminderSound.startsWith("file://") || reminderSound.startsWith("android.resource://") || reminderSound == "Custom"
+                                        val customLabel = if (isCustomSelected && reminderSound.startsWith("content://")) {
+                                            try {
+                                                getFileName(context, android.net.Uri.parse(reminderSound)) ?: "Custom Sound"
+                                            } catch (e: Exception) {
+                                                "Custom Sound"
+                                            }
+                                        } else {
+                                            "Custom..."
+                                        }
+                                        val customContainerColor by animateColorAsState(
+                                            targetValue = if (isCustomSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(customContainerColor)
+                                                .clickable {
+                                                    try {
+                                                        audioPickerLauncher.launch("audio/*")
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "Error opening file picker", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.MusicNote,
+                                                    contentDescription = "Pick sound",
+                                                    modifier = Modifier.size(12.dp),
+                                                    tint = if (isCustomSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = customLabel,
+                                                    fontSize = 10.sp,
+                                                    color = if (isCustomSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -2302,7 +2762,8 @@ fun TaskFormDialog(
 fun CalendarSyncScreen(
     viewModel: TaskViewModel,
     hasCalendarPermission: Boolean,
-    onRequestCalendarPermission: () -> Unit
+    onRequestCalendarPermission: () -> Unit,
+    onTaskEdit: (Task) -> Unit
 ) {
     val context = LocalContext.current
     val selectedCalendarId by viewModel.selectedCalendarId.collectAsState()
@@ -2321,23 +2782,35 @@ fun CalendarSyncScreen(
         mutableStateOf(calendars.find { it.id == selectedCalendarId })
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 850.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         item {
             Text(
-                text = "Google Calendar Sync",
+                text = "Calendar Reminder Companion",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Integrate your study tasks with your Google Calendar to stay organized and synchronized across your devices.",
+                text = "Interactive visual calendar mapping your tasks to days with colorful indicators. Sync with Google Calendar for automatic device updates.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
+            MonthlyCalendarView(
+                tasks = tasks,
+                onTaskClick = onTaskEdit
             )
         }
 
@@ -2631,6 +3104,7 @@ fun CalendarSyncScreen(
         }
     }
 }
+}
 
 @Composable
 fun PomodoroTimerScreen(viewModel: TaskViewModel) {
@@ -2638,26 +3112,45 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
     val tasks by viewModel.tasks.collectAsState()
     val focusSessions by viewModel.focusSessions.collectAsState()
 
-    // Pomodoro defaults
-    var focusMins by remember { mutableStateOf(25) }
-    var shortBreakMins by remember { mutableStateOf(5) }
-    var longBreakMins by remember { mutableStateOf(15) }
+    // Pomodoro settings and states collected directly from ViewModel for background persistence
+    val focusMins by viewModel.focusMins.collectAsState()
+    val shortBreakMins by viewModel.shortBreakMins.collectAsState()
+    val longBreakMins by viewModel.longBreakMins.collectAsState()
+    
+    val currentSessionType by viewModel.currentSessionType.collectAsState()
+    val timerSecondsRemaining by viewModel.timerSecondsRemaining.collectAsState()
+    val timerTotalSeconds by viewModel.timerTotalSeconds.collectAsState()
+    val isTimerRunning by viewModel.isTimerRunning.collectAsState()
+    val selectedTask by viewModel.selectedFocusTask.collectAsState()
+    val isTimerFullscreen by viewModel.isTimerFullscreen.collectAsState()
+    val playSoundOnComplete by viewModel.playSoundOnComplete.collectAsState()
+    val fullScreenOnStartFocus by viewModel.fullScreenOnStartFocus.collectAsState()
 
-    // Session states
-    var currentSessionType by remember { mutableStateOf("Focus") } // "Focus", "Short Break", "Long Break"
-    var timerSecondsRemaining by remember { mutableStateOf(focusMins * 60) }
-    var timerTotalSeconds by remember { mutableStateOf(focusMins * 60) }
-    var isTimerRunning by remember { mutableStateOf(false) }
-
-    // Task selection
-    var selectedTask by remember { mutableStateOf<Task?>(null) }
+    // Task dropdown association selection
     var dropdownExpanded by remember { mutableStateOf(false) }
 
-    // UI Configuration / Settings
+    // UI configuration
     var showSettings by remember { mutableStateOf(false) }
-    var playSoundOnComplete by remember { mutableStateOf(true) }
 
-    // Active color scheme based on mode
+    // Local sliders state for AlertDialog editing (temp values before save)
+    var editFocusMins by remember { mutableStateOf(focusMins) }
+    var editShortBreakMins by remember { mutableStateOf(shortBreakMins) }
+    var editLongBreakMins by remember { mutableStateOf(longBreakMins) }
+    var editPlaySoundOnComplete by remember { mutableStateOf(playSoundOnComplete) }
+    var editFullScreenOnStartFocus by remember { mutableStateOf(fullScreenOnStartFocus) }
+
+    // Sync temp values whenever settings dialog is shown
+    LaunchedEffect(showSettings) {
+        if (showSettings) {
+            editFocusMins = focusMins
+            editShortBreakMins = shortBreakMins
+            editLongBreakMins = longBreakMins
+            editPlaySoundOnComplete = playSoundOnComplete
+            editFullScreenOnStartFocus = fullScreenOnStartFocus
+        }
+    }
+
+    // Active color scheme based on current session mode
     val activeColor = when (currentSessionType) {
         "Focus" -> MaterialTheme.colorScheme.error // Red/coral
         "Short Break" -> MaterialTheme.colorScheme.primary // Green/Teal
@@ -2670,103 +3163,6 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
         "Short Break" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
         "Long Break" -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.2f)
         else -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-    }
-
-    // Effect for the running countdown timer
-    LaunchedEffect(isTimerRunning, timerSecondsRemaining) {
-        if (isTimerRunning && timerSecondsRemaining > 0) {
-            delay(1000L)
-            timerSecondsRemaining -= 1
-        } else if (isTimerRunning && timerSecondsRemaining == 0) {
-            isTimerRunning = false
-
-            // 1. Play alert sound
-            if (playSoundOnComplete) {
-                try {
-                    val notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                    val r = RingtoneManager.getRingtone(context, notification)
-                    r.play()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-
-            // 2. Log focus session if completed Focus mode
-            if (currentSessionType == "Focus") {
-                viewModel.logFocusSession(
-                    taskId = selectedTask?.id,
-                    taskTitle = selectedTask?.title,
-                    durationMinutes = focusMins
-                )
-                Toast.makeText(context, "🏆 Pomodoro completed! Logged $focusMins mins focus.", Toast.LENGTH_LONG).show()
-                RealtimeNotificationHelper.showNotification(
-                    context = context,
-                    title = "🏆 Study Session Completed",
-                    message = "Congratulations! You completed your $focusMins mins focus session for '${selectedTask?.title ?: "General Study"}'."
-                )
-                
-                // Switch to break mode
-                currentSessionType = "Short Break"
-                timerTotalSeconds = shortBreakMins * 60
-                timerSecondsRemaining = timerTotalSeconds
-            } else {
-                Toast.makeText(context, "Break over! Ready to focus?", Toast.LENGTH_SHORT).show()
-                RealtimeNotificationHelper.showNotification(
-                    context = context,
-                    title = "⏰ Break Completed",
-                    message = "Your break has ended. Let's start the next Pomodoro focus session!"
-                )
-                currentSessionType = "Focus"
-                timerTotalSeconds = focusMins * 60
-                timerSecondsRemaining = timerTotalSeconds
-            }
-        }
-    }
-
-    // Handle session type switching
-    fun switchSessionMode(mode: String) {
-        isTimerRunning = false
-        currentSessionType = mode
-        val mins = when (mode) {
-            "Focus" -> focusMins
-            "Short Break" -> shortBreakMins
-            "Long Break" -> longBreakMins
-            else -> 25
-        }
-        timerTotalSeconds = mins * 60
-        timerSecondsRemaining = timerTotalSeconds
-    }
-
-    // Handle configuration changes
-    fun updateDurations(focus: Int, short: Int, long: Int) {
-        focusMins = focus
-        shortBreakMins = short
-        longBreakMins = long
-        
-        // Reset timer if not running
-        if (!isTimerRunning) {
-            val mins = when (currentSessionType) {
-                "Focus" -> focusMins
-                "Short Break" -> shortBreakMins
-                "Long Break" -> longBreakMins
-                else -> 25
-            }
-            timerTotalSeconds = mins * 60
-            timerSecondsRemaining = timerTotalSeconds
-        }
-    }
-
-    // Reset current timer
-    fun resetTimer() {
-        isTimerRunning = false
-        val mins = when (currentSessionType) {
-            "Focus" -> focusMins
-            "Short Break" -> shortBreakMins
-            "Long Break" -> longBreakMins
-            else -> 25
-        }
-        timerTotalSeconds = mins * 60
-        timerSecondsRemaining = timerTotalSeconds
     }
 
     // Calculate formatting
@@ -2787,216 +3183,222 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
     // Pending tasks for selection
     val pendingTasks = remember(tasks) { tasks.filter { !it.isCompleted } }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
     ) {
-        // 1. Header Hero Banner
-        item {
-            var showCreatorDialog by remember { mutableStateOf(false) }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 850.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 1. Header Hero Banner
+            item {
+                var showCreatorDialog by remember { mutableStateOf(false) }
 
-            if (showCreatorDialog) {
-                CreatorInfoDialog(onDismiss = { showCreatorDialog = false })
-            }
-
-            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Study Focus Timer",
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    Button(
-                        onClick = { showCreatorDialog = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.testTag("see_us_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "See Us icon",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "See Us",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
+                if (showCreatorDialog) {
+                    CreatorInfoDialog(onDismiss = { showCreatorDialog = false })
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Boost your academic performance using the classic Pomodoro Technique.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
 
-        // 2. Mode Selector
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val modes = listOf("Focus", "Short Break", "Long Break")
-                    modes.forEach { mode ->
-                        val isSelected = currentSessionType == mode
-                        val btnColor = if (isSelected) activeColor else Color.Transparent
-                        val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(btnColor)
-                                .clickable { switchSessionMode(mode) }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = mode,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = textColor
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Task Association Card
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Focused Study Task",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Study Focus Timer",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
                         )
-                        Icon(
-                            imageVector = Icons.Default.School,
-                            contentDescription = "Task association",
-                            tint = activeColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    if (selectedTask != null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(activeContainerColor, RoundedCornerShape(12.dp))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        
+                        Button(
+                            onClick = { showCreatorDialog = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("see_us_button")
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "See Us icon",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "See Us",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Boost your academic performance using the classic Pomodoro Technique.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 2. Mode Selector
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val modes = listOf("Focus", "Short Break", "Long Break")
+                        modes.forEach { mode ->
+                            val isSelected = currentSessionType == mode
+                            val btnColor = if (isSelected) activeColor else Color.Transparent
+                            val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(btnColor)
+                                    .clickable { viewModel.switchSessionMode(context, mode) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = selectedTask!!.title,
+                                    text = mode,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Subject: ${selectedTask!!.subject} • Est. ${selectedTask!!.estimatedMinutes}m",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = { selectedTask = null }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear selected task",
-                                    tint = MaterialTheme.colorScheme.error
+                                    color = textColor
                                 )
                             }
                         }
-                    } else {
-                        // Dropdown selection trigger
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            OutlinedButton(
-                                onClick = { dropdownExpanded = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                    }
+                }
+            }
+
+            // 3. Task Association Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Focused Study Task",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Icon(
+                                imageVector = Icons.Default.School,
+                                contentDescription = "Task association",
+                                tint = activeColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        if (selectedTask != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(activeContainerColor, RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Select a study task to associate...",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        text = selectedTask!!.title,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Subject: ${selectedTask!!.subject} • Est. ${selectedTask!!.estimatedMinutes}m",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+                                IconButton(onClick = { viewModel.selectedFocusTask.value = null }) {
                                     Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Open dropdown",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear selected task",
+                                        tint = MaterialTheme.colorScheme.error
                                     )
                                 }
                             }
-
-                            DropdownMenu(
-                                expanded = dropdownExpanded,
-                                onDismissRequest = { dropdownExpanded = false },
-                                modifier = Modifier.fillMaxWidth(0.9f)
-                            ) {
-                                if (pendingTasks.isEmpty()) {
-                                    DropdownMenuItem(
-                                        text = { Text("No pending study tasks found") },
-                                        onClick = { dropdownExpanded = false },
-                                        enabled = false
-                                    )
-                                } else {
-                                    pendingTasks.forEach { task ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Column {
-                                                    Text(task.title, fontWeight = FontWeight.Bold)
-                                                    Text("Subject: ${task.subject}", fontSize = 11.sp, color = Color.Gray)
-                                                }
-                                            },
-                                            onClick = {
-                                                selectedTask = task
-                                                dropdownExpanded = false
-                                            }
+                        } else {
+                            // Dropdown selection trigger
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { dropdownExpanded = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Select a study task to associate...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Open dropdown",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = dropdownExpanded,
+                                    onDismissRequest = { dropdownExpanded = false },
+                                    modifier = Modifier.fillMaxWidth(0.9f)
+                                ) {
+                                    if (pendingTasks.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No pending study tasks found") },
+                                            onClick = { dropdownExpanded = false },
+                                            enabled = false
+                                        )
+                                    } else {
+                                        pendingTasks.forEach { task ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Column {
+                                                        Text(task.title, fontWeight = FontWeight.Bold)
+                                                        Text("Subject: ${task.subject}", fontSize = 11.sp, color = Color.Gray)
+                                                    }
+                                                },
+                                                onClick = {
+                                                    viewModel.selectedFocusTask.value = task
+                                                    dropdownExpanded = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3004,284 +3406,476 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
                     }
                 }
             }
-        }
 
-        // 4. Circular Progress Indicator Timer
-        item {
-            Box(
-                modifier = Modifier
-                    .size(240.dp)
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // Background Track Circle and Progress Circle in Canvas
-                Canvas(modifier = Modifier.size(210.dp)) {
-                    // Track Circle
-                    drawCircle(
-                        color = activeColor.copy(alpha = 0.12f),
-                        style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    // Active progress ring arc
-                    drawArc(
-                        color = activeColor,
-                        startAngle = -90f,
-                        sweepAngle = 360f * animatedProgress,
-                        useCenter = false,
-                        style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "$minutesText:$secondsText",
-                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = when (currentSessionType) {
-                            "Focus" -> "FOCUS SESSION"
-                            "Short Break" -> "SHORT BREAK"
-                            "Long Break" -> "LONG BREAK"
-                            else -> "READY"
-                        },
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = activeColor
-                    )
-                }
-            }
-        }
-
-        // 5. Timer Controls Row
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Reset Button
-                IconButton(
-                    onClick = { resetTimer() },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = "Reset Timer",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(24.dp))
-
-                // Play / Pause FAB
-                FloatingActionButton(
-                    onClick = { isTimerRunning = !isTimerRunning },
-                    containerColor = activeColor,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape,
-                    modifier = Modifier.size(64.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isTimerRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isTimerRunning) "Pause focus" else "Start focus",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(24.dp))
-
-                // Settings Button (durations)
-                IconButton(
-                    onClick = { showSettings = true },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Timer settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        // 6. Stats & History Overview Cards
-        item {
-            val totalSessions = focusSessions.size
-            val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "$totalSessions",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Sessions",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(40.dp)
-                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${totalFocusMins}m",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                        Text(
-                            text = "Focus Time",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(40.dp)
-                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val streak = remember(focusSessions) { calculateFocusStreak(focusSessions) }
-                        Text(
-                            text = "$streak",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = "Streak Days",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        // 7. Focus History List
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Focus Sessions Log",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (focusSessions.isNotEmpty()) {
-                    Text(
-                        text = "Clear All",
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.clickable { viewModel.clearFocusSessionHistory() }
-                    )
-                }
-            }
-        }
-
-        if (focusSessions.isEmpty()) {
+            // 4. Circular Progress Indicator Timer
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    // Background Track Circle and Progress Circle in Canvas
+                    Canvas(modifier = Modifier.size(210.dp)) {
+                        // Track Circle
+                        drawCircle(
+                            color = activeColor.copy(alpha = 0.12f),
+                            style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                        // Active progress ring arc
+                        drawArc(
+                            color = activeColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f * animatedProgress,
+                            useCenter = false,
+                            style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No focus sessions completed yet. Start your first Pomodoro timer above to track your studying!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            text = "$minutesText:$secondsText",
+                            style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = when (currentSessionType) {
+                                "Focus" -> "FOCUS SESSION"
+                                "Short Break" -> "SHORT BREAK"
+                                "Long Break" -> "LONG BREAK"
+                                else -> "READY"
+                            },
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = activeColor
                         )
                     }
                 }
             }
-        } else {
-            items(focusSessions) { session ->
+
+            // 5. Timer Controls Row
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Reset Button
+                    IconButton(
+                        onClick = { viewModel.resetTimer(context) },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Reset Timer",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(24.dp))
+
+                    // Play / Pause FAB
+                    FloatingActionButton(
+                        onClick = {
+                            if (isTimerRunning) {
+                                viewModel.pauseTimer(context)
+                            } else {
+                                viewModel.startTimer(context)
+                            }
+                        },
+                        containerColor = activeColor,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = CircleShape,
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isTimerRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isTimerRunning) "Pause focus" else "Start focus",
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(24.dp))
+
+                    // Settings Button (durations shortcut)
+                    IconButton(
+                        onClick = { showSettings = true },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Timer settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // 6. Stats & History Overview Cards
+            item {
+                val totalSessions = focusSessions.size
+                val totalFocusMins = focusSessions.sumOf { it.durationMinutes }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccessTime,
-                                    contentDescription = "Session",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = session.taskTitle ?: "General Study Session",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = formatSessionTime(session.timestamp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$totalSessions",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Sessions",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        Text(
-                            text = "+${session.durationMinutes}m",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(40.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                         )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${totalFocusMins}m",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Text(
+                                text = "Focus Time",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(40.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val streak = remember(focusSessions) { calculateFocusStreak(focusSessions) }
+                            Text(
+                                text = "$streak",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Streak Days",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 7. Focus History List
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Focus Sessions Log",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (focusSessions.isNotEmpty()) {
+                        Text(
+                            text = "Clear All",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.clickable { viewModel.clearFocusSessionHistory() }
+                        )
+                    }
+                }
+            }
+
+            if (focusSessions.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No focus sessions completed yet. Start your first Pomodoro timer above to track your studying!",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(focusSessions) { session ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = "Session",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = session.taskTitle ?: "General Study Session",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = formatSessionTime(session.timestamp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "+${session.durationMinutes}m",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Settings Customization Dialog
+    // Dynamic Background Full-screen focus overlay triggered automatically or manually
+    AnimatedVisibility(
+        visible = isTimerFullscreen,
+        enter = fadeIn(animationSpec = tween(500)),
+        exit = fadeOut(animationSpec = tween(500))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    when (currentSessionType) {
+                        "Focus" -> Color(0xFF1E1010) // Deep dark focus red
+                        "Short Break" -> Color(0xFF0F1B17) // Deep dark green
+                        "Long Break" -> Color(0xFF0D141D) // Deep dark blue
+                        else -> Color(0xFF121212)
+                    }
+                )
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Top Indicator & Control
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { viewModel.pauseTimer(context) },
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isTimerRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause Timer",
+                            tint = Color.White
+                        )
+                    }
+                    
+                    Text(
+                        text = when (currentSessionType) {
+                            "Focus" -> "STUDYING"
+                            "Short Break" -> "SHORT BREAK"
+                            "Long Break" -> "LONG BREAK"
+                            else -> "FOCUSING"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = activeColor.copy(alpha = 0.9f),
+                        letterSpacing = 2.sp
+                    )
+                    
+                    TextButton(
+                        onClick = { viewModel.isTimerFullscreen.value = false },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.7f))
+                    ) {
+                        Text("Exit Fullscreen", fontSize = 12.sp)
+                    }
+                }
+                
+                // Centered Timer Circular Indicator
+                Box(
+                    modifier = Modifier
+                        .size(320.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.size(280.dp)) {
+                        drawCircle(
+                            color = activeColor.copy(alpha = 0.12f),
+                            style = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            color = activeColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f * animatedProgress,
+                            useCenter = false,
+                            style = Stroke(width = 16.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$minutesText:$secondsText",
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                fontSize = 72.sp
+                            ),
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "MINUTES REMAINING",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+                
+                // Bottom Details & Controls
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.navigationBarsPadding().padding(bottom = 24.dp)
+                ) {
+                    if (selectedTask != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(activeColor)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = selectedTask!!.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "General Study Focus",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.resetTimer(context) },
+                            modifier = Modifier
+                                .size(56.dp)
+                                .background(Color.White.copy(alpha = 0.08f), CircleShape)
+                        ) {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = "Reset",
+                                tint = Color.White
+                            )
+                        }
+                        
+                        FloatingActionButton(
+                            onClick = {
+                                if (isTimerRunning) {
+                                    viewModel.pauseTimer(context)
+                                } else {
+                                    viewModel.startTimer(context)
+                                }
+                            },
+                            containerColor = activeColor,
+                            contentColor = Color.White,
+                            shape = CircleShape,
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isTimerRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = "Play/Pause focus",
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Durations Customization Dialog Shortcut
     if (showSettings) {
         AlertDialog(
             onDismissRequest = { showSettings = false },
@@ -3303,11 +3897,11 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Focus Duration", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Text("$focusMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("$editFocusMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                         Slider(
-                            value = focusMins.toFloat(),
-                            onValueChange = { focusMins = it.toInt() },
+                            value = editFocusMins.toFloat(),
+                            onValueChange = { editFocusMins = it.toInt() },
                             valueRange = 5f..60f,
                             steps = 11,
                             colors = SliderDefaults.colors(
@@ -3324,11 +3918,11 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Short Break", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Text("$shortBreakMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("$editShortBreakMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                         Slider(
-                            value = shortBreakMins.toFloat(),
-                            onValueChange = { shortBreakMins = it.toInt() },
+                            value = editShortBreakMins.toFloat(),
+                            onValueChange = { editShortBreakMins = it.toInt() },
                             valueRange = 1f..15f,
                             steps = 14,
                             colors = SliderDefaults.colors(
@@ -3345,11 +3939,11 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("Long Break", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                            Text("$longBreakMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("$editLongBreakMins mins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                         Slider(
-                            value = longBreakMins.toFloat(),
-                            onValueChange = { longBreakMins = it.toInt() },
+                            value = editLongBreakMins.toFloat(),
+                            onValueChange = { editLongBreakMins = it.toInt() },
                             valueRange = 5f..45f,
                             steps = 7,
                             colors = SliderDefaults.colors(
@@ -3367,8 +3961,8 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
                     ) {
                         Text("Play Alert Sound on End", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                         Switch(
-                            checked = playSoundOnComplete,
-                            onCheckedChange = { playSoundOnComplete = it }
+                            checked = editPlaySoundOnComplete,
+                            onCheckedChange = { editPlaySoundOnComplete = it }
                         )
                     }
                 }
@@ -3376,7 +3970,14 @@ fun PomodoroTimerScreen(viewModel: TaskViewModel) {
             confirmButton = {
                 Button(
                     onClick = {
-                        updateDurations(focusMins, shortBreakMins, longBreakMins)
+                        viewModel.updatePomodoroSettings(
+                            context,
+                            editFocusMins,
+                            editShortBreakMins,
+                            editLongBreakMins,
+                            editPlaySoundOnComplete,
+                            editFullScreenOnStartFocus
+                        )
                         showSettings = false
                     },
                     shape = RoundedCornerShape(8.dp)
@@ -3435,3 +4036,657 @@ fun calculateFocusStreak(sessions: List<FocusSession>): Int {
     }
     return streak
 }
+
+@Composable
+fun MonthlyCalendarView(
+    tasks: List<Task>,
+    onTaskClick: (Task) -> Unit
+) {
+    var calendarState by remember { mutableStateOf(java.util.Calendar.getInstance()) }
+    val currentYear = calendarState.get(java.util.Calendar.YEAR)
+    val currentMonth = calendarState.get(java.util.Calendar.MONTH) // 0-indexed
+    
+    var selectedDayCalendar by remember { mutableStateOf(java.util.Calendar.getInstance()) }
+    var selectedDayNum by remember { mutableStateOf(selectedDayCalendar.get(java.util.Calendar.DAY_OF_MONTH)) }
+    
+    // We can list days in current month
+    val daysInMonth = remember(currentYear, currentMonth) {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.YEAR, currentYear)
+            set(java.util.Calendar.MONTH, currentMonth)
+            set(java.util.Calendar.DAY_OF_MONTH, 1)
+        }
+        val maxDays = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+        val startDayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK) // 1 = Sun, 2 = Mon ...
+        List(startDayOfWeek - 1) { null } + List(maxDays) { it + 1 }
+    }
+    
+    val monthName = remember(currentMonth) {
+        SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(calendarState.time)
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(16.dp)
+    ) {
+        // Month navigation header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = {
+                val newCal = java.util.Calendar.getInstance().apply {
+                    time = calendarState.time
+                    add(java.util.Calendar.MONTH, -1)
+                }
+                calendarState = newCal
+            }) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Previous Month")
+            }
+            
+            Text(
+                text = monthName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            IconButton(onClick = {
+                val newCal = java.util.Calendar.getInstance().apply {
+                    time = calendarState.time
+                    add(java.util.Calendar.MONTH, 1)
+                }
+                calendarState = newCal
+            }) {
+                Icon(Icons.Default.ArrowForward, contentDescription = "Next Month")
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // Days of week header
+        val daysOfWeek = listOf("S", "M", "T", "W", "T", "F", "S")
+        Row(modifier = Modifier.fillMaxWidth()) {
+            daysOfWeek.forEach { day ->
+                Text(
+                    text = day,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        // Days Grid
+        val chunkedDays = daysInMonth.chunked(7)
+        chunkedDays.forEach { week ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                week.forEach { dayNum ->
+                    if (dayNum == null) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    } else {
+                        val isToday = remember(dayNum, currentYear, currentMonth) {
+                            val today = java.util.Calendar.getInstance()
+                            today.get(java.util.Calendar.YEAR) == currentYear &&
+                                today.get(java.util.Calendar.MONTH) == currentMonth &&
+                                today.get(java.util.Calendar.DAY_OF_MONTH) == dayNum
+                        }
+                        
+                        val isSelected = remember(dayNum, currentYear, currentMonth, selectedDayNum, selectedDayCalendar) {
+                            selectedDayCalendar.get(java.util.Calendar.YEAR) == currentYear &&
+                                selectedDayCalendar.get(java.util.Calendar.MONTH) == currentMonth &&
+                                selectedDayNum == dayNum
+                        }
+                        
+                        // Check tasks on this day
+                        val tasksOnDay = remember(tasks, dayNum, currentYear, currentMonth) {
+                            tasks.filter { task ->
+                                val taskCal = java.util.Calendar.getInstance().apply {
+                                    timeInMillis = task.dueDate
+                                }
+                                taskCal.get(java.util.Calendar.YEAR) == currentYear &&
+                                    taskCal.get(java.util.Calendar.MONTH) == currentMonth &&
+                                    taskCal.get(java.util.Calendar.DAY_OF_MONTH) == dayNum
+                            }
+                        }
+                        
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                    else if (isToday) MaterialTheme.colorScheme.secondaryContainer
+                                    else Color.Transparent
+                                )
+                                .clickable {
+                                    val newSel = java.util.Calendar.getInstance().apply {
+                                        set(java.util.Calendar.YEAR, currentYear)
+                                        set(java.util.Calendar.MONTH, currentMonth)
+                                        set(java.util.Calendar.DAY_OF_MONTH, dayNum)
+                                    }
+                                    selectedDayCalendar = newSel
+                                    selectedDayNum = dayNum
+                                }
+                                .padding(2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = dayNum.toString(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else if (isToday) MaterialTheme.colorScheme.onSecondaryContainer
+                                else MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            // Visual dot/line when there is a task on day
+                            if (tasksOnDay.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (isSelected) 6.dp else 4.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                            else {
+                                                val hasHigh = tasksOnDay.any { it.priority == 2 }
+                                                if (hasHigh) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.primary
+                                            }
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
+                // Fill up row with spacers if less than 7 days
+                if (week.size < 7) {
+                    repeat(7 - week.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+    
+    Spacer(modifier = Modifier.height(16.dp))
+    
+    // List of tasks for the selected date
+    val selectedDayTasks = remember(tasks, selectedDayCalendar, selectedDayNum) {
+        tasks.filter { task ->
+            val taskCal = java.util.Calendar.getInstance().apply {
+                timeInMillis = task.dueDate
+            }
+            taskCal.get(java.util.Calendar.YEAR) == selectedDayCalendar.get(java.util.Calendar.YEAR) &&
+                taskCal.get(java.util.Calendar.MONTH) == selectedDayCalendar.get(java.util.Calendar.MONTH) &&
+                taskCal.get(java.util.Calendar.DAY_OF_MONTH) == selectedDayNum
+        }
+    }
+    
+    val dateString = remember(selectedDayCalendar, selectedDayNum) {
+        SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault()).format(selectedDayCalendar.time)
+    }
+    
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "Tasks for $dateString",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        if (selectedDayTasks.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            ) {
+                Box(
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No tasks due on this day.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                selectedDayTasks.forEach { task ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onTaskClick(task) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (task.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.surface
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when (task.priority) {
+                                            2 -> MaterialTheme.colorScheme.error
+                                            1 -> Color(0xFFF59E0B)
+                                            else -> MaterialTheme.colorScheme.primary
+                                        }
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = task.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    textDecoration = if (task.isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                                    color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (task.description.isNotBlank()) {
+                                    Text(
+                                        text = task.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = task.subject,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// SCREEN 6: SETTINGS & RINGTONE
+// ==========================================
+@Composable
+fun SettingsScreen(
+    viewModel: TaskViewModel,
+    loggedInUsername: String,
+    onLogout: () -> Unit
+) {
+    val context = LocalContext.current
+    
+    // Collect Pomodoro settings from TaskViewModel
+    val focusMins by viewModel.focusMins.collectAsState()
+    val shortBreakMins by viewModel.shortBreakMins.collectAsState()
+    val longBreakMins by viewModel.longBreakMins.collectAsState()
+    val playSoundOnComplete by viewModel.playSoundOnComplete.collectAsState()
+    val fullScreenOnStartFocus by viewModel.fullScreenOnStartFocus.collectAsState()
+    val selectedRingtoneName by viewModel.selectedRingtoneName.collectAsState()
+    val customRingtoneUri by viewModel.customRingtoneUri.collectAsState()
+
+    // Pick custom audio from device
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            // Take persistable permission if possible (to avoid losing access on app reboot)
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            
+            // Query display name
+            val fileName = getFileName(context, it) ?: "Selected audio file"
+            viewModel.setCustomRingtone(context, "Custom", it.toString())
+            android.widget.Toast.makeText(context, "Set custom ringtone: $fileName", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("settings_screen"),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- 1. User Profile Section (Logged In As) ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "User Avatar",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Logged in as:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = loggedInUsername,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Button(
+                        onClick = onLogout,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.testTag("settings_logout_btn")
+                    ) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Log Out")
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Log Out")
+                    }
+                }
+            }
+        }
+
+        // --- 2. Pomodoro Timer Durations Section ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Pomodoro Timer Durations",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    // Focus Mins Slider
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Focus Session Length")
+                            Text("${focusMins} mins", fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = focusMins.toFloat(),
+                            onValueChange = { viewModel.updatePomodoroSettings(context, it.toInt(), shortBreakMins, longBreakMins, playSoundOnComplete, fullScreenOnStartFocus) },
+                            valueRange = 5f..60f,
+                            steps = 11
+                        )
+                    }
+
+                    // Short Break Mins Slider
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Short Break Length")
+                            Text("${shortBreakMins} mins", fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = shortBreakMins.toFloat(),
+                            onValueChange = { viewModel.updatePomodoroSettings(context, focusMins, it.toInt(), longBreakMins, playSoundOnComplete, fullScreenOnStartFocus) },
+                            valueRange = 1f..20f,
+                            steps = 19
+                        )
+                    }
+
+                    // Long Break Mins Slider
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Long Break Length")
+                            Text("${longBreakMins} mins", fontWeight = FontWeight.Bold)
+                        }
+                        Slider(
+                            value = longBreakMins.toFloat(),
+                            onValueChange = { viewModel.updatePomodoroSettings(context, focusMins, shortBreakMins, it.toInt(), playSoundOnComplete, fullScreenOnStartFocus) },
+                            valueRange = 5f..45f,
+                            steps = 8
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 3. Focus Mode Settings ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Focus Mode Preferences",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Full Screen Focus Overlay", fontWeight = FontWeight.Bold)
+                            Text("Open fullscreen overlay automatically when starting a focus session", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = fullScreenOnStartFocus,
+                            onCheckedChange = { viewModel.updatePomodoroSettings(context, focusMins, shortBreakMins, longBreakMins, playSoundOnComplete, it) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Play Alert Sound on Complete", fontWeight = FontWeight.Bold)
+                            Text("Play a ringtone when your focus session or break ends", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = playSoundOnComplete,
+                            onCheckedChange = { viewModel.updatePomodoroSettings(context, focusMins, shortBreakMins, longBreakMins, it, fullScreenOnStartFocus) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- 4. Custom Ringtone Selection Section ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Alert Sounds & Ringtone",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Text(
+                        text = "Choose the alert sound for study session and task completion reminders:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    val soundOptions = listOf("Default", "Digital Chime", "Classic Bell", "Gentle Harp", "Custom")
+                    
+                    soundOptions.forEach { option ->
+                        val isSelected = (option == selectedRingtoneName)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
+                                .clickable {
+                                    if (option == "Custom") {
+                                        if (customRingtoneUri != null) {
+                                            viewModel.setCustomRingtone(context, "Custom", customRingtoneUri)
+                                        } else {
+                                            audioPickerLauncher.launch("audio/*")
+                                        }
+                                    } else {
+                                        viewModel.setCustomRingtone(context, option, null)
+                                    }
+                                }
+                                .padding(vertical = 10.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    if (option == "Custom") {
+                                        if (customRingtoneUri != null) {
+                                            viewModel.setCustomRingtone(context, "Custom", customRingtoneUri)
+                                        } else {
+                                            audioPickerLauncher.launch("audio/*")
+                                        }
+                                    } else {
+                                        viewModel.setCustomRingtone(context, option, null)
+                                    }
+                                }
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (option == "Custom" && !customRingtoneUri.isNullOrBlank()) {
+                                        val displayUriName = getFileName(context, Uri.parse(customRingtoneUri)) ?: "Custom sound file"
+                                        "Custom: $displayUriName"
+                                    } else {
+                                        option
+                                    },
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                                if (option == "Custom") {
+                                    Text(
+                                        text = "Add/Select an audio file from your device",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                IconButton(
+                                    onClick = { viewModel.playRingtoneSound(context) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Test sound",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (selectedRingtoneName == "Custom") {
+                        Button(
+                            onClick = { audioPickerLauncher.launch("audio/*") },
+                            modifier = Modifier.fillMaxWidth().testTag("pick_custom_ringtone_btn")
+                        ) {
+                            Icon(Icons.Default.AudioFile, contentDescription = "Add Ringtone")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Choose Custom Audio File")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper to get friendly filename from URI
+fun getFileName(context: Context, uri: Uri): String? {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index != -1) {
+                        result = cursor.getString(index)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/')
+        if (cut != null && cut != -1) {
+            result = result.substring(cut + 1)
+        }
+    }
+    return result
+}
+

@@ -1,5 +1,5 @@
 {
-  "name": "Task Study",
+  "name": "Student Task Reminder",
   "description": "An elegant student task reminder app featuring robust local task tracking, due date reminders, subject categorization, and academic analytics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

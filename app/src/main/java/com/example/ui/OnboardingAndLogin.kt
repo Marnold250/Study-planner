@@ -9,6 +9,8 @@ import androidx.compose.animation.with
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -102,18 +104,21 @@ fun OnboardingScreen(onFinished: () -> Unit) {
             }
 
             // Central Image and Text Content
+            val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 // Image Frame with soft glow
                 Card(
                     modifier = Modifier
-                        .size(260.dp)
-                        .padding(12.dp)
+                        .sizeIn(maxWidth = 210.dp, maxHeight = 210.dp)
+                        .aspectRatio(1f)
+                        .padding(8.dp)
                         .testTag("onboarding_image_card"),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
@@ -370,11 +375,13 @@ fun LoginScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
+        val scrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp)
-                .systemBarsPadding(),
+                .systemBarsPadding()
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
