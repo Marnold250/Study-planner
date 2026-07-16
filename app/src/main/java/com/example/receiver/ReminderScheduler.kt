@@ -12,10 +12,15 @@ object ReminderScheduler {
     private const val TAG = "ReminderScheduler"
 
     fun schedule(context: Context, task: Task) {
-        val reminderTime = task.reminderTime ?: return
+        var reminderTime = task.reminderTime ?: return
         if (reminderTime <= System.currentTimeMillis()) {
-            Log.d(TAG, "Reminder time is in the past, skipping schedule.")
-            return
+            if (task.dueDate > System.currentTimeMillis()) {
+                Log.d(TAG, "Reminder time is in the past, but due date is in the future. Fallback: scheduling reminder at task due date.")
+                reminderTime = task.dueDate
+            } else {
+                Log.d(TAG, "Both reminder time and due date are in the past, skipping schedule.")
+                return
+            }
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return

@@ -64,11 +64,18 @@ class ReminderReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val titleLower = task.title.lowercase()
+            val subjectLower = task.subject.lowercase()
+            val isMatch = titleLower.contains("vs") || titleLower.contains("match") || titleLower.contains("game") || titleLower.contains("play") || titleLower.contains("sport") || subjectLower.contains("match") || subjectLower.contains("game") || subjectLower.contains("sport")
+
+            val notificationTitle = if (isMatch) "Match Reminder: ${task.title}" else "Study Reminder: ${task.title}"
+            val notificationText = if (isMatch) "${task.subject} match is starting now! Let's watch." else "${task.subject} task is due soon! Let's get focused."
+
             val iconRes = context.applicationInfo.icon
             val notification = NotificationCompat.Builder(context, "student_task_reminders")
                 .setSmallIcon(if (iconRes != 0) iconRes else android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("Study Reminder: ${task.title}")
-                .setContentText("${task.subject} task is due soon! Let's get focused.")
+                .setContentTitle(notificationTitle)
+                .setContentText(notificationText)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setAutoCancel(true)
@@ -84,7 +91,7 @@ class ReminderReceiver : BroadcastReceiver() {
             notificationManager.notify(taskId, notification)
 
             // Play selected alarm sound looping until dismissed
-            AlarmSoundManager.startAlarm(context, taskId, task.title, task.reminderSound)
+            AlarmSoundManager.startAlarm(context, taskId, task.title, task.subject, task.description, task.reminderSound)
 
             // Handle repeating reminders: Reschedule 24 hours in the future
             if (task.reminderRepeat && !task.isCompleted) {

@@ -81,6 +81,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Info
@@ -99,6 +100,9 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -144,6 +148,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.AppDatabase
 import com.example.data.Task
 import com.example.data.FocusSession
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Refresh
+import android.content.Intent
 import com.example.data.TaskRepository
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.SortOption
@@ -193,9 +204,7 @@ class MainActivity : ComponentActivity() {
         val viewModelFactory = TaskViewModelFactory(repository)
 
         setContent {
-            MyApplicationTheme {
-                MainAppScreen(viewModelFactory)
-            }
+            MainAppScreen(viewModelFactory)
         }
     }
 
@@ -225,6 +234,25 @@ fun formatDateOnly(timestamp: Long): String {
     return sdf.format(Date(timestamp))
 }
 
+fun getSubjectColor(subject: String): Color {
+    val hash = subject.lowercase().hashCode()
+    val colors = listOf(
+        Color(0xFFE91E63), // Pink
+        Color(0xFF9C27B0), // Purple
+        Color(0xFF673AB7), // Deep Purple
+        Color(0xFF3F51B5), // Indigo
+        Color(0xFF2196F3), // Blue
+        Color(0xFF03A9F4), // Light Blue
+        Color(0xFF00BCD4), // Cyan
+        Color(0xFF009688), // Teal
+        Color(0xFF4CAF50), // Green
+        Color(0xFF8BC34A), // Lime Green
+        Color(0xFFFF9800), // Orange
+        Color(0xFFFF5722)  // Deep Orange
+    )
+    return colors[Math.abs(hash % colors.size)]
+}
+
 fun formatTimeOnly(timestamp: Long): String {
     val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
     return sdf.format(Date(timestamp))
@@ -235,8 +263,11 @@ fun formatTimeOnly(timestamp: Long): String {
 fun MainAppScreen(factory: TaskViewModelFactory) {
     val context = LocalContext.current
     val viewModel: TaskViewModel = viewModel(factory = factory)
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val themePreset by viewModel.themePreset.collectAsState()
 
-    // Dynamic Permission requesting for POST_NOTIFICATIONS (Android 13+)
+    MyApplicationTheme(darkTheme = isDarkMode, themePreset = themePreset) {
+        // Dynamic Permission requesting for POST_NOTIFICATIONS (Android 13+)
     var hasNotificationPermission by remember {
         mutableStateOf(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -326,6 +357,8 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
             }
         )
     } else {
+        val snackbarHostState = remember { SnackbarHostState() }
+        val coroutineScope = rememberCoroutineScope()
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isWideScreen = maxWidth > 720.dp
 
@@ -431,6 +464,7 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
 
                 Scaffold(
                     modifier = Modifier.weight(1f),
+                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     topBar = {
                         val appBarTitle = when (currentTab) {
                             0 -> "Student Task Reminder"
@@ -604,6 +638,7 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
                         when (currentTab) {
                             0 -> DashboardScreen(
                                 viewModel = viewModel,
+                                snackbarHostState = snackbarHostState,
                                 onTaskEdit = { task -> editingTask = task },
                                 onTabChange = { currentTab = it },
                                 hasNotificationPermission = hasNotificationPermission,
@@ -615,6 +650,7 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
                             )
                             1 -> TasksListScreen(
                                 viewModel = viewModel,
+                                snackbarHostState = snackbarHostState,
                                 onTaskEdit = { task -> editingTask = task }
                             )
                             2 -> AnalyticsScreen(viewModel = viewModel)
@@ -693,7 +729,20 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
                         // Dialog for Active Task Alarm Pop-up in the Center of the Screen
                         val activeAlarmId = com.example.receiver.AlarmSoundManager.activeAlarmTaskId.value
                         val activeAlarmTitle = com.example.receiver.AlarmSoundManager.activeAlarmTaskTitle.value
+                        val activeAlarmSubject = com.example.receiver.AlarmSoundManager.activeAlarmTaskSubject.value
+                        val activeAlarmDescription = com.example.receiver.AlarmSoundManager.activeAlarmTaskDescription.value
+
                         if (activeAlarmId != null) {
+                            val titleLower = (activeAlarmTitle ?: "").lowercase()
+                            val subjectLower = (activeAlarmSubject ?: "").lowercase()
+                            val isMatch = titleLower.contains("vs") || titleLower.contains("match") || titleLower.contains("game") || titleLower.contains("play") || titleLower.contains("sport") || subjectLower.contains("match") || subjectLower.contains("game") || subjectLower.contains("sport")
+
+                            val alarmDescriptionText = if (isMatch) {
+                                "Your scheduled match reminder has reached its time. Let's get ready for the match!"
+                            } else {
+                                "Your scheduled study reminder has reached its time. Let's get focused!"
+                            }
+
                             AlertDialog(
                                 onDismissRequest = { /* Force explicit dismiss click */ },
                                 icon = {
@@ -724,11 +773,20 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
                                         Text(
-                                            text = "Your scheduled study reminder has reached its time. Let's get focused!",
+                                            text = alarmDescriptionText,
                                             style = MaterialTheme.typography.bodyMedium,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (!activeAlarmDescription.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = activeAlarmDescription,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                            )
+                                        }
                                     }
                                 },
                                 confirmButton = {
@@ -755,6 +813,7 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
         }
     }
 }
+}
 
 // ==========================================
 // SCREEN 1: DASHBOARD
@@ -762,12 +821,14 @@ fun MainAppScreen(factory: TaskViewModelFactory) {
 @Composable
 fun DashboardScreen(
     viewModel: TaskViewModel,
+    snackbarHostState: SnackbarHostState,
     onTaskEdit: (Task) -> Unit,
     onTabChange: (Int) -> Unit,
     hasNotificationPermission: Boolean,
     onRequestNotificationPermission: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val totalMins by viewModel.totalStudyMinutesCompleted.collectAsState()
     val pendingCount by viewModel.pendingTasksCount.collectAsState()
     val overdueCount by viewModel.overdueTasksCount.collectAsState()
@@ -842,6 +903,44 @@ fun DashboardScreen(
                         text = "Track assignments, prepare, achieve.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
+        // Section: Motivational Quote Widget (Feature 5)
+        item {
+            val quotes = remember {
+                listOf(
+                    "Your focus determines your reality. — Qui-Gon Jinn",
+                    "The secret of getting ahead is getting started. — Mark Twain",
+                    "It always seems impossible until it's done. — Nelson Mandela",
+                    "Success is the courage to continue that counts. — Winston Churchill",
+                    "Do what you can, with what you have, where you are. — Theodore Roosevelt",
+                    "The only way to do great work is to love what you do. — Steve Jobs"
+                )
+            }
+            val randomQuote = remember { quotes.random() }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)
+                ),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("💡", fontSize = 22.sp)
+                    Text(
+                        text = randomQuote,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
             }
@@ -979,7 +1078,7 @@ fun DashboardScreen(
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Focus time completed Card
                 Card(
@@ -991,7 +1090,7 @@ fun DashboardScreen(
                     onClick = { onTabChange(2) }
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
@@ -1001,24 +1100,26 @@ fun DashboardScreen(
                         )
                         Row(
                             verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
                                 text = "$totalMins",
-                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Text(
                                 text = "m",
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
                         }
                         Text(
-                            text = "Tasks completed",
+                            text = "Sessions finished",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -1033,7 +1134,7 @@ fun DashboardScreen(
                     onClick = { onTabChange(1) }
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
@@ -1043,25 +1144,74 @@ fun DashboardScreen(
                         )
                         Row(
                             verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
                                 text = "$pendingCount",
-                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = "tasks",
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
                         }
                         Text(
-                            text = if (overdueCount > 0) "⚠️ $overdueCount overdue!" else "No overdue work",
+                            text = if (overdueCount > 0) "⚠️ $overdueCount overdue!" else "No overdue",
                             style = MaterialTheme.typography.labelSmall,
                             color = if (overdueCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontWeight = if (overdueCount > 0) FontWeight.Bold else FontWeight.Normal
+                            fontWeight = if (overdueCount > 0) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Streak Card (Feature 6: Gamified Streak / Study Days)
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Streak",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            val activeDays = remember(filteredTasks) {
+                                val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+                                filteredTasks.filter { it.isCompleted }.map { sdf.format(Date(it.dueDate)) }.distinct().size
+                            }
+                            Text(
+                                text = "${if (activeDays == 0) 1 else activeDays}",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                text = "d",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = "🔥 Focus Flowing!",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -1129,8 +1279,22 @@ fun DashboardScreen(
                 TaskListItem(
                     task = task,
                     onToggleComplete = { viewModel.toggleTaskCompletion(task, context) },
-                    onDelete = { viewModel.deleteTask(task, context) },
-                    onClick = { onTaskEdit(task) }
+                    onDelete = {
+                        val lastDeleted = task
+                        viewModel.deleteTask(task, context)
+                        coroutineScope.launch {
+                            val result = snackbarHostState.showSnackbar(
+                                message = "Task '${task.title}' deleted",
+                                actionLabel = "Undo",
+                                duration = SnackbarDuration.Short
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                viewModel.insertTaskDirectly(lastDeleted, context)
+                            }
+                        }
+                    },
+                    onClick = { onTaskEdit(task) },
+                    onUpdateDescription = { newDesc -> viewModel.updateTask(task.copy(description = newDesc), context) }
                 )
             }
         }
@@ -1143,8 +1307,13 @@ fun DashboardScreen(
 // ==========================================
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
+fun TasksListScreen(
+    viewModel: TaskViewModel,
+    snackbarHostState: SnackbarHostState,
+    onTaskEdit: (Task) -> Unit
+) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val filteredTasks by viewModel.filteredTasks.collectAsState()
     val availableSubjects by viewModel.availableSubjects.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -1303,43 +1472,6 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                 }
             }
 
-            // Status Filter TabRow (Responsive ScrollableTabRow)
-            androidx.compose.material3.ScrollableTabRow(
-                selectedTabIndex = when (statusFilter) {
-                    StatusFilter.ALL -> 0
-                    StatusFilter.PENDING -> 1
-                    StatusFilter.COMPLETED -> 2
-                    StatusFilter.OVERDUE -> 3
-                },
-                edgePadding = 0.dp,
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth().testTag("tasks_status_tabs")
-            ) {
-                val tabsList = listOf(
-                    StatusFilter.ALL to "All",
-                    StatusFilter.PENDING to "Pending",
-                    StatusFilter.COMPLETED to "Completed",
-                    StatusFilter.OVERDUE to "Overdue"
-                )
-                tabsList.forEachIndexed { index, (filter, label) ->
-                    Tab(
-                        selected = statusFilter == filter,
-                        onClick = { viewModel.statusFilter.value = filter },
-                        text = {
-                            Text(
-                                text = label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (statusFilter == filter) FontWeight.Bold else FontWeight.Medium
-                                )
-                            )
-                        }
-                    )
-                }
-            }
-
             // Subject Tag Row (Active Filters)
             if (availableSubjects.isNotEmpty()) {
                 FlowRow(
@@ -1361,6 +1493,45 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                     }
                 }
             }
+
+            // Status Filter TabRow (Responsive ScrollableTabRow)
+            androidx.compose.material3.ScrollableTabRow(
+                selectedTabIndex = when (statusFilter) {
+                    StatusFilter.ALL -> 0
+                    StatusFilter.PENDING -> 1
+                    StatusFilter.COMPLETED -> 2
+                    StatusFilter.OVERDUE -> 3
+                    StatusFilter.ARCHIVED -> 4
+                },
+                edgePadding = 0.dp,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth().testTag("tasks_status_tabs")
+            ) {
+                val tabsList = listOf(
+                    StatusFilter.ALL to "All",
+                    StatusFilter.PENDING to "Pending",
+                    StatusFilter.COMPLETED to "Completed",
+                    StatusFilter.OVERDUE to "Overdue",
+                    StatusFilter.ARCHIVED to "Archived"
+                )
+                tabsList.forEachIndexed { index, (filter, label) ->
+                    Tab(
+                        selected = statusFilter == filter,
+                        onClick = { viewModel.statusFilter.value = filter },
+                        text = {
+                            Text(
+                                text = label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (statusFilter == filter) FontWeight.Bold else FontWeight.Medium
+                                )
+                            )
+                        }
+                    )
+                }
+            }
         }
 
         // Active Tasks Grid list
@@ -1370,6 +1541,23 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                 .weight(1f)
         ) {
             if (filteredTasks.isEmpty()) {
+                val isArchivedTab = statusFilter == StatusFilter.ARCHIVED
+                val autoArchiveOn = viewModel.autoArchiveEnabled.collectAsState().value
+                
+                val emptyTitle = when {
+                    isArchivedTab && !autoArchiveOn -> "Auto-Archive is Off"
+                    isArchivedTab -> "No Archived Tasks"
+                    else -> "No Tasks Found"
+                }
+                
+                val emptyDesc = when {
+                    isArchivedTab && !autoArchiveOn -> "Turn on 'Auto-Archive Completed Tasks' in the Settings tab to automatically move completed tasks here after 24 hours."
+                    isArchivedTab -> "Tasks marked completed will automatically move here 24 hours after completion to keep your active lists clean."
+                    else -> "Try adjusting your search criteria or add a new assignment."
+                }
+
+                val emptyIcon = if (isArchivedTab) Icons.Default.Archive else Icons.Default.Info
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1378,20 +1566,20 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Search empty state",
+                        imageVector = emptyIcon,
+                        contentDescription = "Empty state icon",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "No Tasks Found",
+                        text = emptyTitle,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Try adjusting your search criteria or add a new assignment.",
+                        text = emptyDesc,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -1408,8 +1596,22 @@ fun TasksListScreen(viewModel: TaskViewModel, onTaskEdit: (Task) -> Unit) {
                         TaskListItem(
                             task = task,
                             onToggleComplete = { viewModel.toggleTaskCompletion(task, context) },
-                            onDelete = { viewModel.deleteTask(task, context) },
-                            onClick = { onTaskEdit(task) }
+                            onDelete = {
+                                val lastDeleted = task
+                                viewModel.deleteTask(task, context)
+                                coroutineScope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "Task '${task.title}' deleted",
+                                        actionLabel = "Undo",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        viewModel.insertTaskDirectly(lastDeleted, context)
+                                    }
+                                }
+                            },
+                            onClick = { onTaskEdit(task) },
+                            onUpdateDescription = { newDesc -> viewModel.updateTask(task.copy(description = newDesc), context) }
                         )
                     }
                 }
@@ -1560,14 +1762,17 @@ fun AnimatedTaskCheckbox(
 // ==========================================
 // COMPOSABLE: TASK LIST ITEM CARD (HIGH POLISH)
 // ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListItem(
     task: Task,
     onToggleComplete: () -> Unit,
     onDelete: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onUpdateDescription: ((String) -> Unit)? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     var isUpdating by remember(task.id, task.isCompleted) { mutableStateOf(false) }
 
     val checkCelebrationScale = remember { Animatable(1f) }
@@ -1641,189 +1846,338 @@ fun TaskListItem(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(checkCelebrationScale.value)
-            .graphicsLayer(alpha = animatedAlpha)
-            .clickable(onClick = onClick)
-            .testTag("task_card_item_${task.id}"),
-        colors = CardDefaults.cardColors(
-            containerColor = cardBgAnimated
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (task.isCompleted) 0.dp else 2.dp
-        ),
-        shape = RoundedCornerShape(24.dp),
-        border = cardBorder
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
-            // Priority Indicators color ribbon strip
-            Box(
-                modifier = Modifier
-                    .width(6.dp)
-                    .fillMaxHeight()
-                    .drawBehind {
-                        drawRect(priorityColor)
-                    }
-                    .align(Alignment.CenterVertically)
-            )
-
-            // Content Area
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Interactive Checkbox with standard target height and animations
-                AnimatedTaskCheckbox(
-                    checked = task.isCompleted,
-                    isLoading = isUpdating,
-                    isHighPriority = isHighPriorityActive,
-                    onToggle = {
-                        coroutineScope.launch {
-                            isUpdating = true
-                            delay(500) // Aesthetic delay simulating database saving progress
-                            onToggleComplete()
-                            isUpdating = false
-                        }
-                    },
-                    modifier = Modifier.testTag("task_checkbox_${task.id}")
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Mid Texts Block
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // Subject Capsule tag
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(
-                                    if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.12f)
-                                    else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-                                )
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = task.subject,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // Priority Tag
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(priorityColor.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = priorityLabel,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = priorityColor
-                            )
-                        }
-
-                        // Estimations Hour/Min
-                        Text(
-                            text = "⏳ ${task.estimatedMinutes}m",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = descriptionColor.copy(alpha = 0.7f)
-                        )
-                    }
-
-                    // Task Title
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            textDecoration = if (task.isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
-                        ),
-                        color = titleColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    // Task Description (Optional render if not empty)
-                    if (task.description.isNotBlank()) {
-                        Text(
-                            text = task.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = descriptionColor,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    // Date & Alarm details footer
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = "Due Date",
-                            tint = if (isOverdue) MaterialTheme.colorScheme.error else descriptionColor.copy(alpha = 0.6f),
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Text(
-                            text = "Due: ${formatDateTime(task.dueDate)}",
-                            fontSize = 10.sp,
-                            fontWeight = if (isOverdue) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isOverdue) MaterialTheme.colorScheme.error else descriptionColor.copy(alpha = 0.6f)
-                        )
-
-                        if (task.reminderTime != null && !task.isCompleted) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = "Alarm Active",
-                                tint = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "Reminder set",
-                                fontSize = 10.sp,
-                                color = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.secondary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                // Delete Action trigger Button
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.testTag("delete_task_button_${task.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Task",
-                        tint = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+    // Subtask checklist calculation and extraction (Feature 3)
+    val lines = remember(task.description) { task.description.lines() }
+    val subtasks = remember(lines) {
+        lines.mapIndexedNotNull { index, line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]")) {
+                val checked = trimmed.startsWith("- [x]")
+                val text = trimmed.substring(5).trim()
+                Triple(index, text, checked)
+            } else {
+                null
             }
         }
     }
+    val cleanDescription = remember(lines) {
+        lines.filterNot { 
+            val trimmed = it.trim()
+            trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]")
+        }.joinToString("\n").trim()
+    }
+
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) {
+                onDelete()
+                true
+            } else {
+                false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Icon",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "Delete Task",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+        },
+        content = {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .scale(checkCelebrationScale.value)
+                    .graphicsLayer(alpha = animatedAlpha)
+                    .clickable(onClick = onClick)
+                    .testTag("task_card_item_${task.id}"),
+                colors = CardDefaults.cardColors(
+                    containerColor = cardBgAnimated
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = if (task.isCompleted) 0.dp else 2.dp
+                ),
+                shape = RoundedCornerShape(24.dp),
+                border = cardBorder
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ) {
+                    // Priority Indicators color ribbon strip
+                    Box(
+                        modifier = Modifier
+                            .width(6.dp)
+                            .fillMaxHeight()
+                            .drawBehind {
+                                drawRect(priorityColor)
+                            }
+                            .align(Alignment.CenterVertically)
+                    )
+
+                    // Content Area
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Interactive Checkbox with standard target height and animations
+                        AnimatedTaskCheckbox(
+                            checked = task.isCompleted,
+                            isLoading = isUpdating,
+                            isHighPriority = isHighPriorityActive,
+                            onToggle = {
+                                coroutineScope.launch {
+                                    isUpdating = true
+                                    delay(500) // Aesthetic delay simulating database saving progress
+                                    onToggleComplete()
+                                    isUpdating = false
+                                }
+                            },
+                            modifier = Modifier.testTag("task_checkbox_${task.id}")
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Mid Texts Block
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // Subject Capsule tag
+                                val subjectColor = remember(task.subject) { getSubjectColor(task.subject) }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.12f)
+                                            else subjectColor.copy(alpha = 0.15f)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = task.subject,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else subjectColor
+                                    )
+                                }
+
+                                // Priority Tag
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(priorityColor.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = priorityLabel,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = priorityColor
+                                    )
+                                }
+
+                                // Estimations Hour/Min
+                                Text(
+                                    text = "⏳ ${task.estimatedMinutes}m",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = descriptionColor.copy(alpha = 0.7f)
+                                )
+                            }
+
+                            // Task Title
+                            Text(
+                                text = task.title,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    textDecoration = if (task.isCompleted) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                ),
+                                color = titleColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // Task Description (Optional render if not empty) (Feature 3: Clean Notes description)
+                            if (cleanDescription.isNotBlank()) {
+                                Text(
+                                    text = cleanDescription,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = descriptionColor,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            // Interactive Description Subtasks Checklist (Feature 3)
+                            if (subtasks.isNotEmpty()) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    subtasks.forEach { (index, text, checked) ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    val updatedLines = lines.toMutableList()
+                                                    val prefix = if (checked) "- [ ]" else "- [x]"
+                                                    updatedLines[index] = "$prefix $text"
+                                                    onUpdateDescription?.invoke(updatedLines.joinToString("\n"))
+                                                }
+                                                .padding(vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            androidx.compose.runtime.CompositionLocalProvider(
+                                                LocalMinimumInteractiveComponentSize provides androidx.compose.ui.unit.Dp.Unspecified
+                                            ) {
+                                                Checkbox(
+                                                    checked = checked,
+                                                    onCheckedChange = { isChecked ->
+                                                        val updatedLines = lines.toMutableList()
+                                                        val prefix = if (isChecked) "- [x]" else "- [ ]"
+                                                        updatedLines[index] = "$prefix $text"
+                                                        onUpdateDescription?.invoke(updatedLines.joinToString("\n"))
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = MaterialTheme.colorScheme.primary,
+                                                        uncheckedColor = MaterialTheme.colorScheme.outline
+                                                    ),
+                                                    modifier = Modifier.scale(0.8f)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = text,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    textDecoration = if (checked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                                ),
+                                                color = if (checked) descriptionColor.copy(alpha = 0.6f) else titleColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            // Date & Alarm details footer
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = "Due Date",
+                                    tint = if (isOverdue) MaterialTheme.colorScheme.error else descriptionColor.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Due: ${formatDateTime(task.dueDate)}",
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isOverdue) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isOverdue) MaterialTheme.colorScheme.error else descriptionColor.copy(alpha = 0.6f)
+                                )
+
+                                if (task.reminderTime != null && !task.isCompleted) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Notifications,
+                                        contentDescription = "Alarm Active",
+                                        tint = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Text(
+                                        text = "Reminder set",
+                                        fontSize = 10.sp,
+                                        color = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.secondary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        // Share Action trigger Button (Feature 4)
+                        IconButton(
+                            onClick = {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Assignment details: ${task.title}")
+                                    putExtra(
+                                        Intent.EXTRA_TEXT,
+                                        """
+                                        📝 Assignment: ${task.title}
+                                        📚 Subject: ${task.subject}
+                                        ⚠️ Priority: ${if (task.priority == 2) "High" else if (task.priority == 1) "Medium" else "Low"}
+                                        ⏰ Due: ${formatDateTime(task.dueDate)}
+                                        ${if (cleanDescription.isNotBlank()) "📖 Notes: $cleanDescription" else ""}
+                                        """.trimIndent()
+                                    )
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Share Assignment"))
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share Task",
+                                tint = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Delete Action trigger Button
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.testTag("delete_task_button_${task.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Task",
+                                tint = if (isHighPriorityActive) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    )
 }
 
 // ==========================================
@@ -2168,7 +2522,7 @@ fun TaskFormDialog(
     }
 
     var selectedDueDate by remember { mutableStateOf(calendar.timeInMillis) }
-    var showReminderTime by remember { mutableStateOf(task?.reminderTime != null) }
+    var showReminderTime by remember { mutableStateOf(task == null || task.reminderTime != null) }
 
     var reminderOffsetMinutes by remember { mutableStateOf(task?.reminderOffsetMinutes ?: 15) }
     var reminderRepeat by remember { mutableStateOf(task?.reminderRepeat ?: false) }
@@ -2178,16 +2532,13 @@ fun TaskFormDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    it,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val savedPath = copyUriToInternalStorage(context, it)
+            if (savedPath != null) {
+                reminderSound = savedPath
+                Toast.makeText(context, "Set custom sound: ${getFileName(context, it) ?: "Selected Sound"}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Failed to save selected audio file", Toast.LENGTH_SHORT).show()
             }
-            reminderSound = it.toString()
-            Toast.makeText(context, "Set custom sound: ${getFileName(context, it) ?: "Selected Sound"}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2203,7 +2554,7 @@ fun TaskFormDialog(
     }
     var selectedReminderTime by remember { mutableStateOf(task?.reminderTime ?: reminderCalendar.timeInMillis) }
 
-    val commonSubjects = listOf("Mathematics", "Physics", "Computer Science", "Chemistry", "Biology", "English Literature", "History")
+    val commonSubjects = listOf("Mathematics", "Physics", "Computer Science", "Chemistry", "Biology", "English Literature", "History", "Entertainment", "Daily Task", "Personal", "Hobbies")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -4354,20 +4705,14 @@ fun SettingsScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            // Take persistable permission if possible (to avoid losing access on app reboot)
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    it,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val savedPath = copyUriToInternalStorage(context, it)
+            if (savedPath != null) {
+                val fileName = getFileName(context, it) ?: "Selected audio file"
+                viewModel.setCustomRingtone(context, "Custom", savedPath)
+                android.widget.Toast.makeText(context, "Set custom ringtone: $fileName", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                android.widget.Toast.makeText(context, "Failed to save custom ringtone", android.widget.Toast.LENGTH_SHORT).show()
             }
-            
-            // Query display name
-            val fileName = getFileName(context, it) ?: "Selected audio file"
-            viewModel.setCustomRingtone(context, "Custom", it.toString())
-            android.widget.Toast.makeText(context, "Set custom ringtone: $fileName", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -4554,6 +4899,63 @@ fun SettingsScreen(
             }
         }
 
+        // --- App Customization & Automation Settings ---
+        item {
+            val autoArchiveEnabled by viewModel.autoArchiveEnabled.collectAsState()
+            val isDarkMode by viewModel.isDarkMode.collectAsState()
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "App Customization & Automation",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Dark Theme Mode", fontWeight = FontWeight.Bold)
+                            Text("Manually override app visual styling to dark theme", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = isDarkMode,
+                            onCheckedChange = { viewModel.toggleDarkMode(context, it) },
+                            modifier = Modifier.testTag("settings_dark_mode_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Archive Completed Tasks", fontWeight = FontWeight.Bold)
+                            Text("Automatically move tasks to the archive list 24 hours after completion", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = autoArchiveEnabled,
+                            onCheckedChange = { viewModel.toggleAutoArchive(context, it) },
+                            modifier = Modifier.testTag("settings_auto_archive_switch")
+                        )
+                    }
+                }
+            }
+        }
+
         // --- 4. Custom Ringtone Selection Section ---
         item {
             Card(
@@ -4660,6 +5062,103 @@ fun SettingsScreen(
                 }
             }
         }
+
+        // --- Theme Presets Selection (Feature 10: App Themes) ---
+        item {
+            val themePreset by viewModel.themePreset.collectAsState()
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Visual Theme Presets",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Choose a gorgeous color theme for your study dashboard:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    val presets = listOf(
+                        "vibrant" to "Vibrant Indigo (Default)",
+                        "lavender" to "Lavender Pastel",
+                        "mint" to "Minty Green",
+                        "ocean" to "Deep Ocean Blue",
+                        "cherry" to "Cherry Blossom"
+                    )
+
+                    presets.forEach { (presetKey, presetName) ->
+                        val isSelected = (presetKey == themePreset)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent)
+                                .clickable {
+                                    viewModel.updateThemePreset(context, presetKey)
+                                }
+                                .padding(vertical = 10.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { viewModel.updateThemePreset(context, presetKey) }
+                            )
+                            Text(
+                                text = presetName,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Complete Offline Data Cleanup (Feature 7: Offline Local Data Wipe) ---
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Danger Zone",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = "Permanently wipe all your study tasks, assignments, Pomodoro statistics, and custom preferences from this device. This operation is irreversible.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Button(
+                        onClick = {
+                            viewModel.clearAllTasksForCurrentUser(context)
+                            android.widget.Toast.makeText(context, "All local study data was successfully wiped!", android.widget.Toast.LENGTH_LONG).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth().testTag("wipe_data_btn")
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Wipe All Data")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Reset & Clear All App Data", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -4689,4 +5188,29 @@ fun getFileName(context: Context, uri: Uri): String? {
     }
     return result
 }
+
+// Copy a custom audio file Uri to the app's internal private storage so it remains accessible permanently
+fun copyUriToInternalStorage(context: Context, uri: Uri): String? {
+    try {
+        val resolver = context.contentResolver
+        val fileName = getFileName(context, uri) ?: "custom_alarm_${System.currentTimeMillis()}.mp3"
+        // Sanitize filename to avoid any invalid characters
+        val sanitizedFileName = fileName.replace("[^a-zA-Z0-9._-]".toRegex(), "_")
+        val destDir = java.io.File(context.filesDir, "custom_sounds")
+        if (!destDir.exists()) {
+            destDir.mkdirs()
+        }
+        val outputFile = java.io.File(destDir, sanitizedFileName)
+        resolver.openInputStream(uri)?.use { inputStream ->
+            java.io.FileOutputStream(outputFile).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        }
+        return Uri.fromFile(outputFile).toString()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return null
+    }
+}
+
 

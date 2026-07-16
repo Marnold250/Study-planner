@@ -23,13 +23,17 @@ object AlarmSoundManager {
 
     var activeAlarmTaskId = mutableStateOf<Int?>(null)
     var activeAlarmTaskTitle = mutableStateOf<String?>(null)
+    var activeAlarmTaskSubject = mutableStateOf<String?>(null)
+    var activeAlarmTaskDescription = mutableStateOf<String?>(null)
 
-    fun startAlarm(context: Context, taskId: Int, taskTitle: String, soundName: String) {
+    fun startAlarm(context: Context, taskId: Int, taskTitle: String, taskSubject: String, taskDescription: String, soundName: String) {
         Log.d("AlarmSoundManager", "Starting alarm for task $taskId ($taskTitle) with sound $soundName")
         stopAlarm()
 
         activeAlarmTaskId.value = taskId
         activeAlarmTaskTitle.value = taskTitle
+        activeAlarmTaskSubject.value = taskSubject
+        activeAlarmTaskDescription.value = taskDescription
 
         try {
             when (soundName) {
@@ -119,6 +123,8 @@ object AlarmSoundManager {
         isToneLooping = false
         activeAlarmTaskId.value = null
         activeAlarmTaskTitle.value = null
+        activeAlarmTaskSubject.value = null
+        activeAlarmTaskDescription.value = null
 
         try {
             mediaPlayer?.let {

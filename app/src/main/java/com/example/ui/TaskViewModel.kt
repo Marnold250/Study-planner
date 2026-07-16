@@ -32,7 +32,8 @@ enum class StatusFilter {
     ALL,
     PENDING,
     COMPLETED,
-    OVERDUE
+    OVERDUE,
+    ARCHIVED
 }
 
 enum class RegistrationResult {
@@ -68,6 +69,9 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     val isTimerFullscreen = MutableStateFlow(false)
     val playSoundOnComplete = MutableStateFlow(true)
     val fullScreenOnStartFocus = MutableStateFlow(true)
+    val autoArchiveEnabled = MutableStateFlow(false)
+    val isDarkMode = MutableStateFlow(false)
+    val themePreset = MutableStateFlow("Classic")
     
     // Custom Ringtone / Alarm states
     val selectedRingtoneName = MutableStateFlow("Default")
@@ -152,6 +156,11 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         selectedRingtoneName.value = sharedPrefs.getString("pomodoro_ringtone_name", "Default") ?: "Default"
         customRingtoneUri.value = sharedPrefs.getString("pomodoro_custom_ringtone_uri", null)
 
+        val systemDark = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        isDarkMode.value = sharedPrefs.getBoolean("is_dark_mode", systemDark)
+        autoArchiveEnabled.value = sharedPrefs.getBoolean("auto_archive_enabled", false)
+        themePreset.value = sharedPrefs.getString("theme_preset", "Classic") ?: "Classic"
+
         val savedSeconds = sharedPrefs.getInt("pomodoro_seconds_remaining", focusMins.value * 60)
 
         if (isRunning && endTimestamp > System.currentTimeMillis()) {
@@ -209,6 +218,9 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
             .putBoolean("pomodoro_fullscreen_on_start", fullScreenOnStartFocus.value)
             .putString("pomodoro_ringtone_name", selectedRingtoneName.value)
             .putString("pomodoro_custom_ringtone_uri", customRingtoneUri.value)
+            .putBoolean("auto_archive_enabled", autoArchiveEnabled.value)
+            .putBoolean("is_dark_mode", isDarkMode.value)
+            .putString("theme_preset", themePreset.value)
             .apply()
     }
 
@@ -316,6 +328,21 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         saveTimerStateToPrefs(context)
     }
 
+    fun toggleDarkMode(context: Context, enabled: Boolean) {
+        isDarkMode.value = enabled
+        saveTimerStateToPrefs(context)
+    }
+
+    fun toggleAutoArchive(context: Context, enabled: Boolean) {
+        autoArchiveEnabled.value = enabled
+        saveTimerStateToPrefs(context)
+    }
+
+    fun updateThemePreset(context: Context, preset: String) {
+        themePreset.value = preset
+        saveTimerStateToPrefs(context)
+    }
+
     fun updatePomodoroSettings(context: Context, focus: Int, short: Int, long: Int, playSound: Boolean, fsOnStart: Boolean) {
         focusMins.value = focus
         shortBreakMins.value = short
@@ -386,10 +413,9 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         searchQuery,
         selectedSubject,
         selectedPriority,
-        combine(statusFilter, sortBy) { status, sort -> Pair(status, sort) }
-    ) { allTasks, query, subject, priority, statusSort ->
-        val status = statusSort.first
-        val sort = statusSort.second
+        combine(statusFilter, sortBy, autoArchiveEnabled) { status, sort, autoArchive -> Triple(status, sort, autoArchive) }
+    ) { allTasks, query, subject, priority, triple ->
+        val (status, sort, autoArchive) = triple
         var list = allTasks
 
         // Apply Search
@@ -413,10 +439,17 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         // Apply Status Filter
         val now = System.currentTimeMillis()
         list = when (status) {
-            StatusFilter.ALL -> list
+            StatusFilter.ALL -> {
+                list.filter { !it.isCompleted || !(autoArchive && it.completedAt != null && now - it.completedAt >= 24 * 60 * 60 * 1000L) }
+            }
             StatusFilter.PENDING -> list.filter { !it.isCompleted }
-            StatusFilter.COMPLETED -> list.filter { it.isCompleted }
+            StatusFilter.COMPLETED -> {
+                list.filter { it.isCompleted && !(autoArchive && it.completedAt != null && now - it.completedAt >= 24 * 60 * 60 * 1000L) }
+            }
             StatusFilter.OVERDUE -> list.filter { !it.isCompleted && it.dueDate < now }
+            StatusFilter.ARCHIVED -> {
+                list.filter { it.isCompleted && (autoArchive && it.completedAt != null && now - it.completedAt >= 24 * 60 * 60 * 1000L) }
+            }
         }
 
         // Apply Sorting
@@ -535,7 +568,7 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
                 }
             }
 
-            if (reminderTime != null && reminderTime > System.currentTimeMillis()) {
+            if (reminderTime != null) {
                 ReminderScheduler.schedule(context, savedTask)
             }
         }
@@ -602,6 +635,16 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
         }
     }
 
+    fun insertTaskDirectly(task: Task, context: Context) {
+        viewModelScope.launch {
+            val generatedId = repository.insertTask(task)
+            var savedTask = task.copy(id = generatedId.toInt())
+            if (savedTask.reminderTime != null) {
+                ReminderScheduler.schedule(context, savedTask)
+            }
+        }
+    }
+
     fun logFocusSession(taskId: Int?, taskTitle: String?, durationMinutes: Int, isCompleted: Boolean = true) {
         viewModelScope.launch {
             val session = FocusSession(
@@ -650,6 +693,19 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     fun clearFocusSessionHistory() {
         viewModelScope.launch {
             repository.clearAllFocusSessions()
+        }
+    }
+
+    fun clearAllTasksForCurrentUser(context: Context) {
+        viewModelScope.launch {
+            val taskList = tasks.value
+            for (t in taskList) {
+                if (t.calendarEventId != null) {
+                    CalendarSyncHelper.deleteEventFromCalendar(context, t.calendarEventId)
+                }
+                repository.deleteTask(t)
+                ReminderScheduler.cancel(context, t.id)
+            }
         }
     }
 }
